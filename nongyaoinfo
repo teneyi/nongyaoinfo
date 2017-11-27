@@ -1,1 +1,145 @@
+#!/usr/bin/env python
+# -*- coding:utf-8 -*-
 
+#---python3环境
+#爬取网站：http://www.chinapesticide.gov.cn
+
+import urllib.request
+import urllib.parse
+import http.cookiejar,re
+from lxml import etree
+import pymysql
+import time
+headers={
+'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+'Accept-Encoding':'gzip, deflate',
+'Accept-Language':'zh-CN,zh;q=0.9',
+'Cache-Control':'max-age=0',
+'Connection':'keep-alive',
+'Content-Type':'application/x-www-form-urlencoded',
+'Origin:http':'//www.chinapesticide.gov.cn',
+'Referer':'http://www.chinapesticide.gov.cn/myquery/queryselect',
+'Upgrade-Insecure-Requests':'1',
+'User-Agent':'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/62.0.3202.94 Safari/537.36',
+
+}
+#设置cookie
+cjar = http.cookiejar.CookieJar() #得到cookie对象
+cookie = urllib.request.HTTPCookieProcessor(cjar)#实例化对象
+opener = urllib.request.build_opener(cookie) #绑定cookie
+
+opener.headers=headers
+urllib.request.install_opener(opener) #载入opener
+
+#-----------------------------
+def clean(listdata=[],table_data_zang=[]):#清洗数据函数
+    for i in table_data_zang:
+        i=str(i).replace("['","").replace("']","")
+        i = i.replace('\\r', '')
+        i = i.replace('\r', '')
+        i = i.replace('\\t', '')
+        i = i.replace('\t', '')
+        i = i.replace('\\n', '')
+        i = i.replace('\n', '')
+        i = i.replace(' ', '')
+        listdata.append(i)
+    return listdata
+##1.查询数据
+def nongyao(pageNo):
+    url='http://www.chinapesticide.gov.cn/myquery/queryselect'
+    req=urllib.request.Request(url)
+    data={
+        'pageNo': pageNo,#页数
+        'pageSize': '20',#每页显示多少个
+        'djzh':'',#登记证号
+        'cjmc':'',#厂家名称
+        'sf':'',#省份
+        'nylb':'',#农药类别
+        'zhl':'',
+        'jx':'',
+        'zwmc': '',#作物名称
+        'fzdx':'',#防治对象
+        'syff':'',#施用方法
+        'dx':'',
+        'yxcf':'',
+        'yxcf_en':'',
+        'yxcfhl':'',
+        'yxcf2':'',
+        'yxcf2_en':'',
+        'yxcf2hl':'',
+        'yxcf3':'',
+        'yxcf3_en':'',
+        'yxcf3hl':'',
+        'yxqs_start':'',
+        'yxqs_end':'',
+        'yxjz_start':'',
+        'yxjz_end':'',
+        'dj': '1',
+        'hj': '1',
+        'ygq': '1'
+    }
+    data = urllib.parse.urlencode(data).encode('utf-8')
+    html = opener.open(req,data=data).read().decode('utf-8')
+    selector = etree.HTML(html)
+    table_title = selector.xpath('//table[@id="tab"]/tr//td/p/text()')
+    #print(table_title)#表头字段
+    if pageNo==1:
+        totalpage=selector.xpath('/html/body/div/div/ul/li/a/text()')
+        totalpage=totalpage[-5]
+        print(totalpage)
+        selec_data={'totalpage':totalpage,'pageNo':pageNo,'data':[]}
+    else:
+        selec_data = {'pageNo':pageNo,'data':[]}
+    for i in range(2,22):
+        i_str="tr["+str(i)+"]"
+        table_data_zang=["","","","","","",""]
+        table_data_a = selector.xpath('//table[@id="tab"]/'+i_str+'/td/span/a/text()')#有登记证号、生产企业 等需要合并
+        table_data_zang[0] = selector.xpath('//*[@id="tab"]/' + i_str + '/td[1]/span/a/text()')  # 登记证号
+        table_data_zang[1] = selector.xpath('//*[@id="tab"]/'+i_str+'/td[2]/span/text()')#登记名称
+        table_data_zang[2] = selector.xpath('//*[@id="tab"]/'+i_str+'/td[3]/span/text()')#农药类别
+        table_data_zang[3] = selector.xpath('//*[@id="tab"]/'+i_str+'/td[4]/span/text()')#剂型
+        table_data_zang[4] = selector.xpath('//*[@id="tab"]/'+i_str+'/td[5]/span/text()')#总含量
+        table_data_zang[5] = selector.xpath('//*[@id="tab"]/'+i_str+'/td[6]/span/text()')#有效期至
+        table_data_zang[6] = selector.xpath('//*[@id="tab"]/'+i_str+'/td[7]/span/a/text()')#生产企业
+        #print(table_data_zang)
+        #登记证号点击查看，需要的post 信息
+        djzh_post1,djzh_post2=selector.xpath('//table[@id="tab"]/'+i_str+'/td[1]/span/a/@href')[0].replace('javascript:open(','').replace(')','').replace("'",'').split(',')
+        #点击企业信息查看详细，需要的post数据
+        scqy_post1, scqy_post2=selector.xpath('//table[@id="tab"]/'+i_str+'/td[7]/span/a/@href')[0].replace('javascript:opencompany(','').replace(')','').replace("'",'').split(',')
+        table_data_clean=clean([],table_data_zang)#清洗往后保存这列表
+        ##最后拼接成字典
+        #print(table_data_clean)
+        data_dict={table_title[0]:table_data_clean[0],
+                   table_title[1]: table_data_clean[1],
+                   table_title[2]: table_data_clean[2],
+                   table_title[3]: table_data_clean[3],
+                   table_title[4]: table_data_clean[4],
+                   table_title[5]: table_data_clean[5],
+                   table_title[6]: table_data_clean[6],
+                   'pdno':djzh_post1,
+                   'pdrgno':djzh_post2,
+                   'cid':scqy_post1,
+                   'c_id':scqy_post2
+                   }
+        selec_data['data'].append(data_dict)
+        #print(selec_data)
+    return (selec_data)#数据形式select_data["pageNo":pageNo,'data',data] #其中data是字典形式
+   conn=pymysql.connect(host="192.168.30.161",user='root',passwd='',db='nongyao',port=3306,charset='utf8')#查数据时出现问号需要charset=utf8
+cursor = conn.cursor()#创建游标
+# datas=nongyao(name='水稻',pageNo=10)['data']
+###《-------------------------第一层爬取：：——————————--》
+totalpage=int(nongyao(pageNo=1)['totalpage'])-1 ##获取总页码
+for page in range(1,totalpage):#range(1,397)
+    datas=nongyao(pageNo=page)['data']
+    if page==1:
+        print("总页码：",totalpage)
+    print('爬取页码：----->',page)
+    for data in datas:
+        sql="insert into nongyaoinfo(id,djzh ,djmc ,nylb,jx ,zhl ,yxqz ,scqy,pdno,pdrgno,cid,c_id ) VALUE(uuid(),'%s','%s','%s','%s','%s','%s','%s','%s','%s','%s','%s')"%(data['登记证号'],data['登记名称'],data['农药类别'],data['剂型'],data['总含量'],data['有效期至'],data['生产企业'],data['pdno'],data['pdrgno'],data['cid'],data['c_id'])
+        cursor.execute(sql)
+    conn.commit()
+    time.sleep(0.1)
+    # 关闭游标
+cursor.close()
+# 关闭连接
+conn.close()
