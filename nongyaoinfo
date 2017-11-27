@@ -124,7 +124,7 @@ def nongyao(pageNo):
         selec_data['data'].append(data_dict)
         #print(selec_data)
     return (selec_data)#数据形式select_data["pageNo":pageNo,'data',data] #其中data是字典形式
-   conn=pymysql.connect(host="192.168.30.161",user='root',passwd='',db='nongyao',port=3306,charset='utf8')#查数据时出现问号需要charset=utf8
+   conn=pymysql.connect(host="localhost",user='root',passwd='',db='nongyao',port=3306,charset='utf8')#查数据时出现问号需要charset=utf8
 cursor = conn.cursor()#创建游标
 # datas=nongyao(name='水稻',pageNo=10)['data']
 ###《-------------------------第一层爬取：：——————————--》
